@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sales and collections dashboard</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef3f6;color:#152b3b;font:16px/1.5 system-ui,sans-serif}
+main{max-width:1080px;margin:auto;padding:clamp(16px,4vw,52px)}
+header{background:#102d3c;color:#fff;padding:clamp(20px,4vw,45px);border-radius:20px}
+header p{margin:.4rem 0;color:#d5e7ef}h1{font-size:clamp(1.9rem,5vw,3.4rem);line-height:1.06;margin:.4rem 0 1rem}h2{margin:0 0 12px;font-size:1.25rem}
+.filters,.metrics{display:flex;flex-wrap:wrap;gap:14px;margin:22px 0}
+label{display:grid;gap:5px;font-weight:650}
+select{border:1px solid #758c9a;border-radius:8px;background:white;color:#152b3b;padding:9px 14px;font:inherit}
+.metric,.panel{background:white;border-radius:14px;padding:20px;border:1px solid #ccd9e0}
+.metric{flex:1 1 180px}.metric span{display:block;color:#405e6e}.metric strong{font-size:1.45rem}
+.panel{margin:16px 0}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}
+caption{text-align:left;color:#405e6e;margin-bottom:8px}th,td{padding:9px 12px;border-bottom:1px solid #dce6ea;text-align:right}
+th:first-child{text-align:left}thead th{color:#294c5d}
+.bars{display:grid;gap:12px}.bar-row{display:grid;grid-template-columns:85px 1fr 115px;align-items:center;gap:8px}
+meter{width:100%;height:16px;accent-color:#067461}.bar-row span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.note{color:#405e6e;font-size:.92rem}:focus-visible{outline:3px solid #087a8b;outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<header><p>Portfolio demo · Synthetic data</p><h1>Sales and collections</h1><p>Review regional trading performance and the cash still outstanding. All amounts are in BDT.</p></header>
+<section class="filters" aria-label="Dashboard filters">
+<label>Reporting month<select id="month"><option value="0">January 2026</option><option value="1">February 2026</option><option value="2" selected>March 2026</option></select></label>
+<label>Region<select id="region"><option value="">All regions</option><option>Central</option><option>East</option><option>North</option><option>South</option></select></label>
+</section>
+<section id="metrics" class="metrics" aria-label="Summary metrics" aria-live="polite"></section>
+<section class="panel"><h2>Closing receivables by region</h2><div id="bars" class="bars"></div><p class="note">Use the closing balance to prioritize a review. A balance can include invoices still within their payment terms.</p></section>
+<section class="panel"><h2>Regional performance</h2><div class="scroll" tabindex="0" role="region" aria-label="Scrollable regional performance table"><table><caption id="period"></caption><thead><tr><th scope="col">Region</th><th scope="col">Net sales</th><th scope="col">Cash collected</th><th scope="col">Closing receivables</th><th scope="col">Gross margin</th><th scope="col">Margin rate</th></tr></thead><tbody id="rows"></tbody></table></div><p class="note">Gross margin equals net sales less cost of goods sold. Closing receivables equal opening receivables plus net sales less cash collected.</p></section>
+</main>
+<script>
+const regions = [
+  {name:"Central", opening:250000, months:[[840000,790000,575000],[905000,870000,620000],[980000,915000,662000]]},
+  {name:"East", opening:180000, months:[[560000,510000,393000],[580000,575000,395000],[625000,610000,419000]]},
+  {name:"North", opening:220000, months:[[620000,550000,447000],[680000,585000,483000],[710000,605000,501000]]},
+  {name:"South", opening:145000, months:[[490000,488000,322000],[525000,545000,336000],[560000,590000,351000]]}
+];
+const month = document.querySelector("#month");
+const region = document.querySelector("#region");
+const currency = new Intl.NumberFormat("en-BD",{style:"currency",currency:"BDT",maximumFractionDigits:0});
+const percent = new Intl.NumberFormat("en-BD",{style:"percent",maximumFractionDigits:1});
+const money = value => currency.format(value);
+const rate = (gross,sales) => sales ? percent.format(gross/sales) : "—";
+
+function reportFor(entry,monthIndex) {
+  const opening = entry.months.slice(0,monthIndex).reduce((balance,[sales,cash]) => balance+sales-cash,entry.opening);
+  const [sales,cash,cost] = entry.months[monthIndex];
+  return {name:entry.name,sales,cash,closing:opening+sales-cash,gross:sales-cost};
+}
+function render() {
+  const allRows = regions.map(entry => reportFor(entry,Number(month.value)));
+  const shown = allRows.filter(row => !region.value || row.name===region.value);
+  const total = field => shown.reduce((sum,row) => sum+row[field],0);
+  const metrics = [
+    ["Net sales",money(total("sales"))],["Cash collected",money(total("cash"))],
+    ["Closing receivables",money(total("closing"))],
+    ["Gross margin",money(total("gross"))+" · "+rate(total("gross"),total("sales"))]
+  ];
+  const maxBalance = Math.max(...allRows.map(row => row.closing),1);
+  document.querySelector("#metrics").innerHTML = metrics.map(([label,value]) =>
+    `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join("");
+  document.querySelector("#bars").innerHTML = shown.map(row =>
+    `<div class="bar-row"><span>${row.name}</span><meter aria-label="${row.name} closing receivables" min="0" max="${maxBalance}" value="${row.closing}"></meter><span>${money(row.closing)}</span></div>`).join("");
+  document.querySelector("#period").textContent = month.selectedOptions[0].text;
+  document.querySelector("#rows").innerHTML = shown.map(row =>
+    `<tr><th scope="row">${row.name}</th><td>${money(row.sales)}</td><td>${money(row.cash)}</td><td>${money(row.closing)}</td><td>${money(row.gross)}</td><td>${rate(row.gross,row.sales)}</td></tr>`).join("");
+}
+month.addEventListener("change",render);
+region.addEventListener("change",render);
+render();
+</script>
+</body>
+</html>
